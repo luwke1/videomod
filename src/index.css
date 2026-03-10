@@ -1,0 +1,55 @@
+@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- BASE SETUP --- */
+body {
+  margin: 0;
+  background-color: #030303;
+  color: #e5e5e5;
+  font-family: 'Space Mono', monospace; 
+  overflow: hidden; /* Prevent body scroll */
+}
+
+/* --- WINDOW DRAG REGIONS --- */
+/* The top bar allows dragging the window */
+.titlebar-drag-region {
+  -webkit-app-region: drag;
+}
+/* Buttons inside the top bar must NOT drag */
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* --- CUSTOM RANGE SLIDER (THE TRIMMER) --- */
+/* Removes default web styles to create the "Physical" track look */
+input[type=range] {
+  -webkit-appearance: none; 
+  background: transparent; 
+  pointer-events: none; /* Allow clicks to pass through the track */
+}
+
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 24px;   /* Increased hit area height */
+  width: 24px;    /* Increased hit area width for easier grabbing */
+  background: #ccff00;
+  cursor: ew-resize;
+  pointer-events: auto; /* Only the handle intercepts clicks */
+  border-radius: 0px;
+}
+
+/* Remove the margin-top if you use the 24px height to keep it centered */
+input[type=range]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  background: transparent; /* Track is handled by your visual divs */
+  border: none;
+}
+
+/* --- SCROLLBARS --- */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: #333; }
+::-webkit-scrollbar-thumb:hover { background: #ccff00; }
