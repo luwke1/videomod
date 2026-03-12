@@ -1,7 +1,5 @@
-dependecies/glomap/*
-node_modules
+dependencies
 
-dependencies/colmap/*
-dependencies/ffmpeg/*
+node_modules
 
 venv

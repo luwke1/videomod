@@ -1,120 +1,90 @@
 import React, { Suspense, useRef, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Center, OrbitControls } from '@react-three/drei';
-import VolumetricPlayer from '../3D/VolumetricPlayer';
+import VolumetricPlayer from '../3D/VolumetricPlayer2';
 
 export default function Viewport({ resultPath }) {
-  const rgbVideoRef = useRef(null);
-  const depthVideoRef = useRef(null);
+  const videoRef = useRef(null);
   const controlsRef = useRef(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(1);
-  const [colorMode, setColorMode] = useState('rgb'); // 'rgb' or 'depth'
+  const [colorMode, setColorMode] = useState('rgb');
 
-  // Sync timeline with video playback
-  // Sync timeline with Master (RGB) video playback
   useEffect(() => {
-    const rgb = rgbVideoRef.current;
-    const depth = depthVideoRef.current;
-    if (!rgb || !depth) return;
+    const video = videoRef.current;
+    if (!video) return;
 
-    // UI Updates
-    const updateTime = () => setCurrentTime(rgb.currentTime);
-    const updateDuration = () => setDuration(rgb.duration);
+    const updateTime = () => setCurrentTime(video.currentTime);
+    const updateDuration = () => setDuration(video.duration);
 
-    // Slave Synchronization Functions
-    const syncPlay = () => depth.play().catch(() => { }); // Catch abort errors during rapid clicking
-    const syncPause = () => depth.pause();
-    const syncSeek = () => { depth.currentTime = rgb.currentTime; };
-    const syncWait = () => depth.pause();
+    // Ensure state matches actual playback if it pauses to buffer
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
 
-    // Aggressive Drift Monitor Loop
-    let driftFrameId;
-    const monitorDrift = () => {
-      // Only check for drift if both are actively playing
-      if (!rgb.paused && !depth.paused) {
-        const drift = Math.abs(rgb.currentTime - depth.currentTime);
-        // If drift exceeds ~50ms (roughly 1.5 frames at 30fps), force alignment
-        if (drift > 0.05) {
-          depth.currentTime = rgb.currentTime;
-        }
-      }
-      driftFrameId = requestAnimationFrame(monitorDrift);
-    };
-
-    // Attach to Master (RGB) Video
-    rgb.addEventListener('timeupdate', updateTime);
-    rgb.addEventListener('loadedmetadata', updateDuration);
-    rgb.addEventListener('play', syncPlay);
-    rgb.addEventListener('pause', syncPause);
-    rgb.addEventListener('playing', syncPlay); // Catches recovery from buffering
-    rgb.addEventListener('waiting', syncWait); // Pauses depth if RGB is buffering
-    rgb.addEventListener('seeking', syncSeek); // Syncs during scrubbing
-    rgb.addEventListener('seeked', syncSeek);  // Syncs precisely at scrub end / loop restart
-
-    monitorDrift(); // Start the loop
+    video.addEventListener('timeupdate', updateTime);
+    video.addEventListener('loadedmetadata', updateDuration);
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
 
     return () => {
-      rgb.removeEventListener('timeupdate', updateTime);
-      rgb.removeEventListener('loadedmetadata', updateDuration);
-      rgb.removeEventListener('play', syncPlay);
-      rgb.removeEventListener('pause', syncPause);
-      rgb.removeEventListener('playing', syncPlay);
-      rgb.removeEventListener('waiting', syncWait);
-      rgb.removeEventListener('seeking', syncSeek);
-      rgb.removeEventListener('seeked', syncSeek);
-      cancelAnimationFrame(driftFrameId);
+      video.removeEventListener('timeupdate', updateTime);
+      video.removeEventListener('loadedmetadata', updateDuration);
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
     };
   }, [resultPath]);
 
   const togglePlay = () => {
-    // Only command the Master video; the event listeners will handle the Slave automatically
     if (isPlaying) {
-      rgbVideoRef.current.pause();
+      videoRef.current.pause();
     } else {
-      rgbVideoRef.current.play();
+      videoRef.current.play();
     }
-    setIsPlaying(!isPlaying);
   };
 
   const handleSeek = (e) => {
     const time = parseFloat(e.target.value);
-    // Only seek the Master video to avoid race conditions
-    rgbVideoRef.current.currentTime = time;
+    videoRef.current.currentTime = time;
     setCurrentTime(time);
   };
 
   const resetCamera = () => {
     if (controlsRef.current) {
-      controlsRef.current.reset();
+      // 1. Access the camera through the controls
+      const camera = controlsRef.current.object;
+
+      // 2. Set the physical position of the camera
+      camera.position.set(0, 0, -8);
+
+      // 3. Set the point the camera is looking at (the pivot)
+      controlsRef.current.target.set(0, 0, 0);
+
+      // 4. IMPORTANT: Tell the controls to sync up with the new camera math
+      controlsRef.current.update();
     }
   };
 
-  // Format paths for electron local file loading
-  const rgbSrc = resultPath ? `file://${resultPath.replace(/\\/g, '/')}/trimmed.mp4` : null;
-  const depthSrc = resultPath ? `file://${resultPath.replace(/\\/g, '/')}/depth_web.mp4` : null;
+  // Point to the new combined video generated by the backend
+  const videoSrc = resultPath ? `file://${resultPath.replace(/\\/g, '/')}/combined.mp4` : null;
 
   return (
     <section className="flex-1 relative bg-black titlebar-drag-region flex flex-col">
       <div className="flex-1 relative overflow-hidden">
         {resultPath ? (
           <Suspense fallback={<LoadingState />}>
-            {/* Hidden Video Elements serving as texture sources */}
-            <video ref={rgbVideoRef} src={rgbSrc} loop muted playsInline className="hidden" crossOrigin="anonymous" />
-            <video ref={depthVideoRef} src={depthSrc} loop muted playsInline className="hidden" crossOrigin="anonymous" />
+            <video ref={videoRef} src={videoSrc} loop muted playsInline className="hidden" crossOrigin="anonymous" />
 
             <div className="w-full h-full no-drag cursor-crosshair">
-              <Canvas camera={{ position: [0, 0, 5], fov: 50 }}>
+              <Canvas camera={{ position: [0, 0, -8], fov: 50 }}>
                 <ambientLight intensity={1.5} />
                 <directionalLight position={[0, 0, 5]} intensity={1} />
                 <OrbitControls ref={controlsRef} makeDefault enablePan={true} />
 
                 <Center>
                   <VolumetricPlayer
-                    rgbVideoRef={rgbVideoRef}
-                    depthVideoRef={depthVideoRef}
+                    videoRef={videoRef}
                     colorMode={colorMode}
                   />
                 </Center>
@@ -126,7 +96,6 @@ export default function Viewport({ resultPath }) {
         )}
       </div>
 
-      {/* PLAYER CONTROLS (Only visible when video is loaded) */}
       {resultPath && (
         <div className="h-20 bg-zinc-950 border-t border-zinc-800 flex items-center px-6 gap-6 no-drag">
           <button
@@ -136,7 +105,6 @@ export default function Viewport({ resultPath }) {
             {isPlaying ? "||" : "▶"}
           </button>
 
-          {/* Timeline Scrubber */}
           <div className="flex-1 flex items-center gap-4">
             <span className="text-[10px] text-zinc-500 font-mono w-10 text-right">{currentTime.toFixed(1)}s</span>
             <input
@@ -151,7 +119,6 @@ export default function Viewport({ resultPath }) {
             <span className="text-[10px] text-zinc-500 font-mono w-10">{duration.toFixed(1)}s</span>
           </div>
 
-          {/* UI Toggles */}
           <div className="flex gap-2">
             <button
               onClick={() => setColorMode(colorMode === 'rgb' ? 'depth' : 'rgb')}

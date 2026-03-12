@@ -33,8 +33,8 @@ def process_video(video_path, start_time, end_time, use_cuda, output_dir):
     if original_fps == 0 or np.isnan(original_fps): 
         original_fps = 30.0
 
-    # 2. Apply dynamic cap (max 29 as requested, otherwise keep native)
-    target_fps = min(original_fps, 29.0)
+    # Cap the target FPS to 30
+    target_fps = min(original_fps, 30.0)
     
     print(f"STATUS:TRIMMING_VIDEO_AT_{target_fps:.2f}_FPS...", flush=True)
     # 3. Inject the dynamic target_fps to enforce CFR without destroying stop-motion
@@ -69,7 +69,7 @@ def process_video(video_path, start_time, end_time, use_cuda, output_dir):
             if not ret: break
             
             frame_count += 1
-            if frame_count % 10 == 0:
+            if frame_count % 20 == 0:
                 print(f"STATUS:PROCESSING_FRAME_{frame_count}/{total_frames}...", flush=True)
             
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -102,6 +102,24 @@ def process_video(video_path, start_time, end_time, use_cuda, output_dir):
             raise Exception(f"FFmpeg failed: {result.stderr}")
 
         shutil.rmtree(temp_frames_dir)
+
+        # --- NEW CODE: STACK RGB AND DEPTH VERTICALLY ---
+        combined_video = output_dir / "combined.mp4"
+        print("STATUS:PACKING_TEXTURES_INTO_SINGLE_STREAM...", flush=True)
+        
+        stack_result = subprocess.run([
+            FFMPEG_BIN, "-y", 
+            "-i", str(trimmed_video), 
+            "-i", str(web_depth_video), 
+            "-filter_complex", "vstack", 
+            "-c:v", "libx264", 
+            "-crf", "10", 
+            str(combined_video)
+        ], capture_output=True, text=True)
+
+        if stack_result.returncode != 0:
+            raise Exception(f"FFmpeg stacking failed: {stack_result.stderr}")
+
         print(f"RESULT:{str(output_dir)}", flush=True)
 
     except Exception as e:
